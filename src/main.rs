@@ -12,6 +12,7 @@ use std::thread::sleep;
 use std::path::Path;
 use rand::prelude::*;
 use std::f32::consts;
+use futures;
 
 use sdl2::event::Event;
 use sdl2::keyboard::Keycode;
@@ -24,8 +25,8 @@ struct Chip8 {
     _PC: u16, // program counter
     v_registers: [u8; 16], // cpu general purpose registers
     index_register: u16, // index register
-    _delay_timer: u8, // delay timer (counts down at 60 HZ regardless of cpu speed)
-    _sound_timer: u8, // sound timer (counts down at 60 HZ regardless of cpu speed, beep should play while sound timer is greater than 0)
+    delay_timer: u8, // delay timer (counts down at 60 HZ regardless of cpu speed)
+    sound_timer: u8, // sound timer (counts down at 60 HZ regardless of cpu speed, beep should play while sound timer is greater than 0)
     memory: [u8; 4096], // memory
     stack: Vec<u16>, // stack
     frame_buffer: Array2D<u8>, // frame buffer for display
@@ -39,17 +40,17 @@ struct Chip8 {
 impl Default for Chip8 {
     fn default() -> Self {
         Chip8 {
-            cpu_frequency: 500,
+            cpu_frequency: 600,
             _PC: 0x200, // Normal program start position at 0x200
             v_registers: [0; 16],
             index_register: 0,
-            _delay_timer: 0,
-            _sound_timer: 0,
+            delay_timer: 0,
+            sound_timer: 0,
             memory: [0; 4096],
             stack: Vec::new(),
             display_size_x: 64,
             display_size_y: 32,
-            screen_scale: 20,
+            screen_scale: 10,
             // TODO: the values for display size x and y must be entered manually into frame_buffer
             // fix so display_size_x/y and frame_buffer get x and y values from same place
             frame_buffer: Array2D::filled_with(0, 64, 32),
@@ -67,7 +68,8 @@ fn main() {
     let fps = 60;
 
     // Game file
-    let file: String = String::from("C:\\Users\\jappa\\Repos\\chip8_rust\\src\\PONG.ch8");    
+    // let file: String = String::from("C:\\Users\\jappa\\Repos\\chip8_rust\\src\\PONG.ch8");    
+    let file: String = String::from("C:\\Users\\jappa\\Repos\\chip8_rust\\src\\CAVE.ch8");    
 
     // Read file into memory
     let mem_idx = chip8._PC;
@@ -105,7 +107,7 @@ fn main() {
 
     // Print time
     let mut curr_time = SystemTime::now();
-    let delay_timer = 60;
+    let delay_timer = 16.67f64;
 
     // sdl2 events and video
     let sdl_context = sdl2::init().unwrap();
@@ -119,7 +121,7 @@ fn main() {
     .unwrap();
 
     // Canvas
-    let mut canvas: Canvas<Window> = window.into_canvas().present_vsync().build().unwrap();
+    let mut canvas: Canvas<Window> = window.into_canvas().build().unwrap();
 
 
     // Game loop
@@ -127,10 +129,10 @@ fn main() {
         let op_code = fetch(&mut chip8);
         decode(op_code, &mut chip8, &mut canvas);
 
-        if curr_time.elapsed().unwrap().as_millis() > delay_timer {
+        if curr_time.elapsed().unwrap().as_millis() as f64 > delay_timer {
             curr_time = SystemTime::now();
-            if chip8._delay_timer > 0 {chip8._delay_timer -= 1};
-            if chip8._sound_timer > 0 {chip8._sound_timer -= 1};
+            if chip8.delay_timer > 0 {chip8.delay_timer -= 1};
+            if chip8.sound_timer > 0 {chip8.sound_timer -= 1};
         }
 
         for event in event_pump.poll_iter() {
@@ -264,8 +266,8 @@ fn main() {
                 _ => {}
             }
 
-        sleep(Duration::new(0, 1_000_000_000 / chip8.cpu_frequency));
         }
+        sleep(Duration::new(0, 1_000_000_000 / chip8.cpu_frequency));
     }
 }
 
@@ -273,7 +275,7 @@ fn fetch(chip8: &mut Chip8) -> u16{
     let instruct1: u16 = u16::from(chip8.memory[chip8._PC as usize]) << 8;
     let instruct2: u16 = u16::from(chip8.memory[(chip8._PC + 1) as usize]);
     let full_instruct: u16 = instruct1 + instruct2;
-    // println!("{:x}", full_instruct);
+    println!("{:x}", full_instruct);
     chip8._PC += 2;
     full_instruct
 }
@@ -288,19 +290,28 @@ fn decode(op_code: u16, chip8: &mut Chip8, canvas: &mut Canvas<Window>) {
     let op_y = &third_nibble;
     let op_n = &fourth_nibble;
     let op_nn: u8 = (op_code & 0b0000_0000_1111_1111).try_into().unwrap();
-    let op_nnn = (op_code & 0b0000_1111_1111_1111);
+    let op_nnn = op_code & 0b0000_1111_1111_1111;
 
     // println!("1. {:x} 2. {:x} 3. {:x} 4. {:x}", first_nibble, second_nibble, third_nibble, fourth_nibble);
 
-    if op_code == 0x00E0 {
-        // println!("Clear Screen");
-        clear_screen(canvas);
-    }
-    if op_code == 0x00EE {
-        chip8._PC = chip8.stack.pop().unwrap();
-    }
-
     match first_nibble {
+        0x0 => {
+            match op_nn {
+                0xE0 => {
+                    println!("Clear Screen");
+                    clear_screen(canvas, chip8);
+                }
+
+                0xEE => {
+                    chip8._PC = chip8.stack.pop().unwrap();
+                }
+
+                _ => {
+                    println!("Error: Cannot interpret 0XXX opcode");
+                }
+            }
+        }
+
         0x1 => {
             // println!("Jump");
             chip8._PC = op_nnn;
@@ -314,21 +325,21 @@ fn decode(op_code: u16, chip8: &mut Chip8, canvas: &mut Canvas<Window>) {
 
         0x3 => {
             // println!("Skip if VX == NN")
-            if (chip8.v_registers[*op_x as usize] == op_nn) {
+            if chip8.v_registers[*op_x as usize] == op_nn {
                 chip8._PC += 2;
             }
         }
 
         0x4 => {
             // println!("Skip if VX != NN")
-            if (chip8.v_registers[*op_x as usize] != op_nn) {
+            if chip8.v_registers[*op_x as usize] != op_nn {
                 chip8._PC += 2;
             }
         }
 
         0x5 => {
             // println!("Skip if VX == VY")
-            if (chip8.v_registers[*op_x as usize] == chip8.v_registers[*op_y as usize]) {
+            if chip8.v_registers[*op_x as usize] == chip8.v_registers[*op_y as usize] {
                 chip8._PC += 2;
             }
         }
@@ -377,8 +388,8 @@ fn decode(op_code: u16, chip8: &mut Chip8, canvas: &mut Canvas<Window>) {
 
                 0x5 => {
                     // VX -= VY
+                    chip8.v_registers[0xF] = 1;
                     if chip8.v_registers[*op_x as usize] > chip8.v_registers[*op_y as usize] {
-                        chip8.v_registers[0xF] = 1;
                         chip8.v_registers[*op_x as usize] -= chip8.v_registers[*op_y as usize];
                     }
                     else {
@@ -392,7 +403,7 @@ fn decode(op_code: u16, chip8: &mut Chip8, canvas: &mut Canvas<Window>) {
 
                 0x6 => {
                     // VX shift right
-                    // chip8.v_registers[*op_x as usize] = chip8.v_registers[*op_y as usize]; // TODO: Make optional
+                    chip8.v_registers[*op_x as usize] = chip8.v_registers[*op_y as usize]; // TODO: Make optional
 
                     if chip8.v_registers[*op_x as usize] & 0x1 == 1 {
                         println!("{:b}", chip8.v_registers[*op_x as usize]);
@@ -409,8 +420,8 @@ fn decode(op_code: u16, chip8: &mut Chip8, canvas: &mut Canvas<Window>) {
 
                 0x7 => {
                     // VX = VY - VX
+                    chip8.v_registers[0xF] = 1;
                     if chip8.v_registers[*op_y as usize] > chip8.v_registers[*op_x as usize] {
-                        chip8.v_registers[0xF] = 1;
                         chip8.v_registers[*op_x as usize] = chip8.v_registers[*op_y as usize] - chip8.v_registers[*op_x as usize];
                     }
                     else {
@@ -425,16 +436,16 @@ fn decode(op_code: u16, chip8: &mut Chip8, canvas: &mut Canvas<Window>) {
 
                 0xE => {
                     // VX shift left
-                    // chip8.v_registers[*op_x as usize] = chip8.v_registers[*op_y as usize]; // TODO: Make optional
+                    chip8.v_registers[*op_x as usize] = chip8.v_registers[*op_y as usize]; // TODO: Make optional
 
-                    if chip8.memory[*op_x as usize] >> 7 & 0x1 == 1 {
-                        chip8.memory[0xF] = 1;
+                    if chip8.v_registers[*op_x as usize] >> 7 & 0x1 == 1 {
+                        chip8.v_registers[0xF] = 1;
                     }
                     else {
-                        chip8.memory[0xF] = 0;
+                        chip8.v_registers[0xF] = 0;
                     }
                     
-                    chip8.memory[*op_x as usize] <<= 1;
+                    chip8.v_registers[*op_x as usize] <<= 1;
                 } 
 
                 _ => {
@@ -445,7 +456,7 @@ fn decode(op_code: u16, chip8: &mut Chip8, canvas: &mut Canvas<Window>) {
 
         0x9 => {
             // println!("Skip if VX != VY")
-            if (chip8.v_registers[*op_x as usize] != chip8.v_registers[*op_y as usize]) {
+            if chip8.v_registers[*op_x as usize] != chip8.v_registers[*op_y as usize] {
                 chip8._PC += 2;
             }
         }
@@ -468,6 +479,7 @@ fn decode(op_code: u16, chip8: &mut Chip8, canvas: &mut Canvas<Window>) {
             chip8.v_registers[*op_x as usize] = random_num;
         }
 
+        // Draw
         0xD => {
             let mut x_coord = chip8.v_registers[*op_x as usize] % chip8.display_size_x as u8;
             let mut y_coord = chip8.v_registers[*op_y as usize] % chip8.display_size_y as u8;
@@ -487,9 +499,6 @@ fn decode(op_code: u16, chip8: &mut Chip8, canvas: &mut Canvas<Window>) {
                             chip8.frame_buffer[(x_coord as usize, y_coord as usize)] = 1;
                         }
                     }
-                    else {
-                        chip8.frame_buffer[(x_coord as usize, y_coord as usize)] = 0;
-                    }
                     x_coord += 1;
                     if x_coord >= chip8.display_size_x as u8 {
                         break;
@@ -508,14 +517,14 @@ fn decode(op_code: u16, chip8: &mut Chip8, canvas: &mut Canvas<Window>) {
             match fourth_nibble {
                 0xE => {
                     // Skip one instruction if key X is being pressed
-                    if chip8.input_array[chip8.memory[*op_x as usize] as usize] {
+                    if chip8.input_array[chip8.v_registers[*op_x as usize] as usize] {
                         chip8._PC += 2;
                     }
                 }
 
                 0x1 => {
                     // Skip one instruction if key X is not being pressed
-                    if !chip8.input_array[chip8.memory[*op_x as usize] as usize]  {
+                    if !chip8.input_array[chip8.v_registers[*op_x as usize] as usize]  {
                         chip8._PC += 2;
                     }
                 }
@@ -531,17 +540,17 @@ fn decode(op_code: u16, chip8: &mut Chip8, canvas: &mut Canvas<Window>) {
                 // Timers
                 0x07 => {
                     // Set VX to current value of delay timer
-                    chip8.v_registers[*op_x as usize] = chip8._delay_timer;
+                    chip8.v_registers[*op_x as usize] = chip8.delay_timer;
                 }
 
                 0x15 => {
                     // Set delay timer to VX
-                    chip8._delay_timer = chip8.v_registers[*op_x as usize];
+                    chip8.delay_timer = chip8.v_registers[*op_x as usize];
                 }
 
                 0x18 => {
                     // Set sound timer to VX
-                    chip8._sound_timer = chip8.v_registers[*op_x as usize];
+                    chip8.sound_timer = chip8.v_registers[*op_x as usize];
                 }
 
                 // Add to index
@@ -570,7 +579,7 @@ fn decode(op_code: u16, chip8: &mut Chip8, canvas: &mut Canvas<Window>) {
                 // Font character
                 0x29 => {
                     // Sets index register to address of hexadecimal character in VX
-                    match chip8.memory[*op_x as usize] {
+                    match chip8.v_registers[*op_x as usize] {
                         0x0 => {
                             chip8.index_register = chip8.font_starting_memory_addr + (5 * 0);
                         }
@@ -684,7 +693,6 @@ fn decode(op_code: u16, chip8: &mut Chip8, canvas: &mut Canvas<Window>) {
 
 }
 
-
 // Draw to screen
 fn draw(chip8: &Chip8, canvas: &mut Canvas<Window>) {
     for y in 0..32 {
@@ -699,7 +707,8 @@ fn draw(chip8: &Chip8, canvas: &mut Canvas<Window>) {
             else {
                 canvas.set_draw_color(Color::RGB(0, 0, 0));
                 let pt = Point::new(x * chip8.screen_scale as i32, y * chip8.screen_scale as i32);
-                let big_pt = Rect::from_center(pt, 10, 10);
+                let big_pt = Rect::from_center(pt, chip8.screen_scale as u32, chip8.screen_scale as u32);
+                canvas.fill_rect(big_pt);
                 canvas.draw_rect(big_pt);
             }
         }
@@ -707,7 +716,12 @@ fn draw(chip8: &Chip8, canvas: &mut Canvas<Window>) {
     canvas.present();
 }
 
-// TODO: Need to clear frame_buffer array as well
-fn clear_screen(canvas: &mut Canvas<Window>) {
+// Clears frame buffer and canvas
+fn clear_screen(canvas: &mut Canvas<Window>, chip8: &mut Chip8) {
+    for x in 0..chip8.display_size_x {
+        for y in 0..chip8.display_size_y {
+            chip8.frame_buffer[(x as usize, y as usize)] = 0;
+        }
+    }
     canvas.clear();
 }
