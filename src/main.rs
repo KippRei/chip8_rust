@@ -1,14 +1,30 @@
-use core::prelude;
 #[allow(unused_variables)]
 #[allow(unused_imports)]
+extern crate sdl2;
 
 use std::time::{Duration, SystemTime, UNIX_EPOCH};
 use array2d::{Array2D, Error};
-use device_query::{DeviceQuery, DeviceState, Keycode};
+use sdl2::pixels::Color;
+use sdl2::render::Canvas;
+use std::thread::sleep;
+use std::path::Path;
+
+use sdl2::event::Event;
+use sdl2::keyboard::Keycode;
+use sdl2::rect::Point;
+use sdl2::rect::Rect;
+use sdl2::video::Window;
+
+struct Chip8 {
+    
+}
 
 fn main() {
     // CPU speed
     let cpu_frequency: u64 = 500;
+
+    // Game FPS
+    let fps = 60;
 
     // Game file
     let file: String = String::from("C:\\Users\\jappa\\Repos\\chip8_rust\\src\\IBM_Logo.ch8");    
@@ -53,8 +69,12 @@ fn main() {
         i += 1;
     }
 
+    // Display size
+    let display_size_x = 64;
+    let display_size_y = 32;
+
     // Frame buffer
-    let mut frame_buffer: Array2D<u8> = Array2D::filled_with(0, 64, 32);
+    let mut frame_buffer: Array2D<u8> = Array2D::filled_with(0,display_size_x, display_size_y);
 
     // CPU registers
     let mut v_registers: [u8; 16] = [0; 16];
@@ -69,71 +89,106 @@ fn main() {
     let mut _delay_timer: u8 = 0;
     let mut _sound_timer: u8 = 0;
 
-    let device_state = DeviceState::new();
     // Print time
     let mut currTime = SystemTime::now();
 
-    // Game loop
-    while true {
-        if (currTime.elapsed().unwrap() > Duration::from_millis(cpu_frequency)) {
-            currTime = SystemTime::now();
-        
-            let op_code = fetch(&mut _PC, &memory);
-            decode(op_code, &mut _PC, &mut stack, &mut memory, &mut frame_buffer, &mut v_registers, &mut index_register);
-            // println!("{}", _PC);
+    // sdl2 events and video
+    let sdl_context = sdl2::init().unwrap();
+    let mut event_pump = sdl_context.event_pump().unwrap();
+    let video_subsystem = sdl_context.video().unwrap();
 
-            let keys: Vec<Keycode> = device_state.get_keys();
-            if keys.contains(&Keycode::Key1) {
-                println!("1");
+    // Build window
+    let window = video_subsystem.window("Chip-8", (display_size_x * 10) as u32, (display_size_y * 10) as u32)
+    .position_centered()
+    .build()
+    .unwrap();
+
+    // Canvas
+    let mut canvas: Canvas<Window> = window.into_canvas().present_vsync().build().unwrap();
+
+
+    // Game loop
+    'game_loop: loop {
+        let op_code = fetch(&mut _PC, &memory);
+        decode(op_code, &mut _PC, &mut stack, &mut memory, &mut frame_buffer, &mut v_registers, &mut index_register, &mut canvas);
+        // println!("{}", _PC);
+
+        for event in event_pump.poll_iter() {
+            match event {
+                Event::KeyDown {keycode: Some(Keycode::Num1), ..} => {
+                    println!("1");
+                }
+
+                Event::KeyDown {keycode: Some(Keycode::Num2), ..} => {
+                    println!("2");
+                }
+
+                Event::KeyDown {keycode: Some(Keycode::Num3), ..} => {
+                    println!("3");
+                }
+
+                Event::KeyDown {keycode: Some(Keycode::Num4), ..} => {
+                    println!("C");
+                }
+
+                Event::KeyDown {keycode: Some(Keycode::Q), ..} => {
+                    println!("4");
+                }
+
+                Event::KeyDown {keycode: Some(Keycode::W), ..} => {
+                    println!("5");
+                }
+
+                Event::KeyDown {keycode: Some(Keycode::E), ..} => {
+                    println!("6");
+                }
+
+                Event::KeyDown {keycode: Some(Keycode::R), ..} => {
+                    println!("D");
+                }
+
+                Event::KeyDown {keycode: Some(Keycode::A), ..} => {
+                    println!("7");
+                }
+
+                Event::KeyDown {keycode: Some(Keycode::S), ..} => {
+                    println!("8");
+                }
+
+                Event::KeyDown {keycode: Some(Keycode::D), ..} => {
+                    println!("9");
+                }
+
+                Event::KeyDown {keycode: Some(Keycode::F), ..} => {
+                    println!("E");
+                }
+
+                Event::KeyDown {keycode: Some(Keycode::Z), ..} => {
+                    println!("A");
+                }
+
+                Event::KeyDown {keycode: Some(Keycode::X), ..} => {
+                    println!("0");
+                }
+
+                Event::KeyDown {keycode: Some(Keycode::C), ..} => {
+                    println!("B");
+                }
+
+                Event::KeyDown {keycode: Some(Keycode::V), ..} => {
+                    println!("F");
+                }
+
+                Event::KeyDown {keycode: Some(Keycode::Escape), ..} => {
+                    break 'game_loop;
+                }
+
+                _ => {}
             }
-            if keys.contains(&Keycode::Key2) {
-                println!("2");
-            }
-            if keys.contains(&Keycode::Key3) {
-                println!("3");
-            }
-            if keys.contains(&Keycode::Key4) {
-                println!("C");
-            }
-            if keys.contains(&Keycode::Q) {
-                println!("4");
-            }
-            if keys.contains(&Keycode::W) {
-                println!("5");
-            }
-            if keys.contains(&Keycode::E) {
-                println!("6");
-            }
-            if keys.contains(&Keycode::R) {
-                println!("D");
-            }
-            if keys.contains(&Keycode::A) {
-                println!("7");
-            }
-            if keys.contains(&Keycode::S) {
-                println!("8");
-            }
-            if keys.contains(&Keycode::D) {
-                println!("9");
-            }
-            if keys.contains(&Keycode::F) {
-                println!("E");
-            }
-            if keys.contains(&Keycode::Z) {
-                println!("A");
-            }
-            if keys.contains(&Keycode::X) {
-                println!("0");
-            }
-            if keys.contains(&Keycode::C) {
-                println!("B");
-            }
-            if keys.contains(&Keycode::V) {
-                println!("F");
-            }
+
+        sleep(Duration::new(0, 1_000_000_000 / fps));
         }
     }
-
 }
 
 fn fetch(_PC: &mut u32, memory: &[u8; 4096]) -> u16{
@@ -145,7 +200,7 @@ fn fetch(_PC: &mut u32, memory: &[u8; 4096]) -> u16{
     full_instruct
 }
 
-fn decode(op_code: u16, _PC: &mut u32, _stack: &mut Vec<u16>, memory: &mut [u8; 4096], frame_buffer: &mut Array2D<u8>, v_registers: &mut [u8; 16], index_register: &mut u16) {
+fn decode(op_code: u16, _PC: &mut u32, _stack: &mut Vec<u16>, memory: &mut [u8; 4096], frame_buffer: &mut Array2D<u8>, v_registers: &mut [u8; 16], index_register: &mut u16, canvas: &mut Canvas<Window>) {
     let first_nibble = (op_code & 0b1111000000000000) >> 12;
     let second_nibble = (op_code & 0b0000111100000000) >> 8;
     let third_nibble = (op_code & 0b0000000011110000) >> 4;
@@ -154,14 +209,14 @@ fn decode(op_code: u16, _PC: &mut u32, _stack: &mut Vec<u16>, memory: &mut [u8; 
     let op_x = &second_nibble;
     let op_y = &third_nibble;
     let op_n = &fourth_nibble;
-    let op_nn: u8 = (op_code & 0b0000000011111111).try_into().unwrap();
-    let op_nnn = op_code & 0b0000111111111111;
+    let op_nn: u8 = (op_code & 0b0000_0000_1111_1111).try_into().unwrap();
+    let op_nnn = (op_code & 0b0000_1111_1111_1111);
 
     // println!("1. {:x} 2. {:x} 3. {:x} 4. {:x}", first_nibble, second_nibble, third_nibble, fourth_nibble);
 
     if op_code == 0x00E0 {
         // println!("Clear Screen");
-        //clear_screen();
+        clear_screen(canvas);
     }
 
     match first_nibble {
@@ -171,13 +226,13 @@ fn decode(op_code: u16, _PC: &mut u32, _stack: &mut Vec<u16>, memory: &mut [u8; 
         }
 
         0x6 => {
-            // println!("Set register VX");
+            // println!("Set register VX to {}", op_nn);
             v_registers[*op_x as usize] = op_nn;
         }
 
         0x7 => {
-            // println!("Set register VY");
-            v_registers[*op_y as usize] = op_nn;
+            // println!("Add {} register VX", op_nn);
+            v_registers[*op_x as usize] = v_registers[*op_x as usize] + op_nn;
         }
 
         0xA => {
@@ -186,15 +241,16 @@ fn decode(op_code: u16, _PC: &mut u32, _stack: &mut Vec<u16>, memory: &mut [u8; 
         }
 
         0xD => {
-            println!("Draw");
             let mut x_coord = v_registers[*op_x as usize] % 64;
             let mut y_coord = v_registers[*op_y as usize] % 32;
+            println!("x: {} y: {}", x_coord, y_coord);
+
             v_registers[0xF] = 0;
 
             for n in 0..*op_n {
                 let sprite_data = memory[(*index_register + n) as usize];
                 for i in (0..8).rev() {
-                    let bit = &sprite_data >> i & 1;
+                    let bit = (sprite_data >> i) & 1;
                     if bit == 1 {
                         if frame_buffer[(x_coord as usize, y_coord as usize)] == 1 {
                             frame_buffer[(x_coord as usize, y_coord as usize)] = 0;
@@ -207,33 +263,42 @@ fn decode(op_code: u16, _PC: &mut u32, _stack: &mut Vec<u16>, memory: &mut [u8; 
                     else {
                         frame_buffer[(x_coord as usize, y_coord as usize)] = 0;
                     }
-                   
                     x_coord += 1;
                 }
                 y_coord += 1;
                 x_coord = v_registers[*op_x as usize] % 64;
             }
-            draw(frame_buffer);
+            draw(frame_buffer, canvas);
         }
 
-        _ => {
-            
-        }
+        _ => {}
     } 
 
 }
 
-fn draw(frame_buffer: &Array2D<u8>) {
+
+// Draw to screen
+fn draw(frame_buffer: &Array2D<u8>, canvas: &mut Canvas<Window>) {
     for y in 0..32 {
-        println!();
         for x in 0..64 {
             if frame_buffer[(x as usize, y as usize)] == 1 {
-                print!("#");
+                canvas.set_draw_color(Color::RGB(0, 0, 255));
+                let pt = Point::new(x * 10, y * 10);
+                let big_pt = Rect::from_center(pt, 10, 10);
+                canvas.fill_rect(big_pt);
+                canvas.draw_rect(big_pt);
             }
             else {
-                print!(" ");
+                canvas.set_draw_color(Color::RGB(0, 0, 0));
+                let pt = Point::new(x * 10, y * 10);
+                let big_pt = Rect::from_center(pt, 10, 10);
+                canvas.draw_rect(big_pt);
             }
         }
     }
-    println!();
+    canvas.present();
+}
+
+fn clear_screen(canvas: &mut Canvas<Window>) {
+    canvas.clear();
 }

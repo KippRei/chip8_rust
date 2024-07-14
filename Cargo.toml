@@ -8,6 +8,7 @@ edition = "2021"
 [dependencies]
 array2d = "0.3.2"
 device_query = "=0.2.8"
+sdl2 = "0.37"
 
 [dependencies.windows]
 version = "0.58.0"
